@@ -1,0 +1,28 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3a4f21f59c4e4cc4d8bb930b02473a57, type: 3}
+  m_Name: AudioCategory
+  m_EditorClassIdentifier: Assembly-CSharp::Sources.Code.Config.Audio.AudioCategory
+  uiClick: {fileID: 0}
+  uiHover: {fileID: 0}
+  menuOpen: {fileID: 0}
+  menuClose: {fileID: 0}
+  menuStart: {fileID: 0}
+  musicMenu: {fileID: 0}
+  musicGameplay: {fileID: 0}
+  stepDefault: {fileID: 0}
+  stepWood: {fileID: 0}
+  stepMetal: {fileID: 0}
+  stepSnow: {fileID: 0}
+  doorOpen: {fileID: 0}
+  doorClose: {fileID: 0}
+  leverPull: {fileID: 0}

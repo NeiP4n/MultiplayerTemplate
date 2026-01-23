@@ -1,0 +1,105 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3a9752b0c8e144801967e6897679604b, type: 3}
+  m_Name: vHierarchy Data
+  m_EditorClassIdentifier: VHierarchy::VHierarchy.VHierarchyData
+  sceneDatas_byGuid:
+    keys:
+    - 99c9720ab356a0642a771bea13969a05
+    - ca8c2658484e3fb4194c8b6c82724b5c
+    - 01cf0a61ae2951347a2c0561d019a955
+    - b33c6e0b81cba6548a95683db77740e2
+    values:
+    - goDatas_byGlobalId:
+        keys:
+        - globalObjectIdString: GlobalObjectId_V1-2-99c9720ab356a0642a771bea13969a05-29221991-0
+        - globalObjectIdString: GlobalObjectId_V1-2-99c9720ab356a0642a771bea13969a05-835878275-0
+        - globalObjectIdString: GlobalObjectId_V1-2-99c9720ab356a0642a771bea13969a05-1164160047-0
+        - globalObjectIdString: GlobalObjectId_V1-2-99c9720ab356a0642a771bea13969a05-693345153-0
+        values:
+        - colorIndex: 2
+          iconNameOrGuid: 
+          isIconRecursive: 0
+          isColorRecursive: 0
+        - colorIndex: 3
+          iconNameOrGuid: 
+          isIconRecursive: 0
+          isColorRecursive: 1
+        - colorIndex: 8
+          iconNameOrGuid: 
+          isIconRecursive: 0
+          isColorRecursive: 0
+        - colorIndex: 2
+          iconNameOrGuid: 
+          isIconRecursive: 0
+          isColorRecursive: 0
+    - goDatas_byGlobalId:
+        keys:
+        - globalObjectIdString: GlobalObjectId_V1-1-ca8c2658484e3fb4194c8b6c82724b5c-4043431239191972087-0
+        - globalObjectIdString: GlobalObjectId_V1-1-ca8c2658484e3fb4194c8b6c82724b5c-682705542881850923-0
+        - globalObjectIdString: GlobalObjectId_V1-1-ca8c2658484e3fb4194c8b6c82724b5c-1752803900479945838-0
+        - globalObjectIdString: GlobalObjectId_V1-1-ca8c2658484e3fb4194c8b6c82724b5c-6121414470212594398-0
+        - globalObjectIdString: GlobalObjectId_V1-1-ca8c2658484e3fb4194c8b6c82724b5c-8087182623852929219-0
+        values:
+        - colorIndex: 9
+          iconNameOrGuid: 
+          isIconRecursive: 0
+          isColorRecursive: 1
+        - colorIndex: 4
+          iconNameOrGuid: 
+          isIconRecursive: 0
+          isColorRecursive: 1
+        - colorIndex: 8
+          iconNameOrGuid: 
+          isIconRecursive: 0
+          isColorRecursive: 0
+        - colorIndex: 1
+          iconNameOrGuid: 
+          isIconRecursive: 0
+          isColorRecursive: 0
+        - colorIndex: 9
+          iconNameOrGuid: 
+          isIconRecursive: 0
+          isColorRecursive: 1
+    - goDatas_byGlobalId:
+        keys:
+        - globalObjectIdString: GlobalObjectId_V1-1-01cf0a61ae2951347a2c0561d019a955-3964306890003202445-0
+        - globalObjectIdString: GlobalObjectId_V1-1-01cf0a61ae2951347a2c0561d019a955-2929328031582759036-0
+        - globalObjectIdString: GlobalObjectId_V1-1-01cf0a61ae2951347a2c0561d019a955-4253404996168215901-0
+        - globalObjectIdString: GlobalObjectId_V1-1-01cf0a61ae2951347a2c0561d019a955-3022769541804050245-0
+        values:
+        - colorIndex: 5
+          iconNameOrGuid: 
+          isIconRecursive: 0
+          isColorRecursive: 1
+        - colorIndex: 5
+          iconNameOrGuid: 
+          isIconRecursive: 0
+          isColorRecursive: 1
+        - colorIndex: 5
+          iconNameOrGuid: 
+          isIconRecursive: 0
+          isColorRecursive: 1
+        - colorIndex: 1
+          iconNameOrGuid: 
+          isIconRecursive: 0
+          isColorRecursive: 1
+    - goDatas_byGlobalId:
+        keys:
+        - globalObjectIdString: GlobalObjectId_V1-2-b33c6e0b81cba6548a95683db77740e2-908534723-0
+        values:
+        - colorIndex: 0
+          iconNameOrGuid: StandaloneInputModule Icon
+          isIconRecursive: 1
+          isColorRecursive: 0
+  bookmarks: []
+  bookmarkedScenePaths: []
