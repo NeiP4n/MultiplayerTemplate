@@ -69,12 +69,25 @@ namespace Sources.Controllers
             targetX += look.x;
             targetY = Mathf.Clamp(targetY - look.y, minLookDown, maxLookUp);
 
-            currentX = Mathf.SmoothDamp(currentX, targetX, ref velX, smoothTime);
-            currentY = Mathf.SmoothDamp(currentY, targetY, ref velY, smoothTime);
+            currentX = targetX;
+            currentY = targetY;
+
 
             cam.localRotation = Quaternion.Euler(currentY, 0f, 0f);
-            body.rotation = Quaternion.Euler(0f, currentX, 0f);
+
+            Quaternion bodyRotation = Quaternion.Euler(0f, currentX, 0f);
+
+            Rigidbody rb = body.GetComponent<Rigidbody>();
+            if (rb != null && !rb.isKinematic)
+            {
+                rb.MoveRotation(bodyRotation);
+            }
+            else
+            {
+                body.rotation = bodyRotation;
+            }
         }
+
 
         public void ForceSetAngles(float yaw, float pitch)
         {

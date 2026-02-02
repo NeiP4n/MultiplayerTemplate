@@ -1,46 +1,22 @@
 using UnityEngine;
-using Sources.Code.Interfaces;
-using Sources.Code.Audio;
 
-namespace Gameplay.Interaction
+namespace Sources.Code.Gameplay.ObjectsInteraction
 {
-    public class Door : MonoBehaviour, IInteractable
+    public sealed class Door : MonoBehaviour
     {
-        [SerializeField] private Animator _animator;
-        private bool _isOpen;
+        [SerializeField] private Animator animator;
 
-        public bool CanInteract => true;
+        public bool IsOpen { get; private set; }
 
-        private void Awake()
+        public void ApplyState(bool open)
         {
-            if (_animator == null)
-                _animator = GetComponentInChildren<Animator>();
-        }
+            if (IsOpen == open)
+                return;
 
-        public void Interact()
-        {
-            _isOpen = !_isOpen;
+            IsOpen = open;
 
-            if (_animator != null)
-                _animator.SetBool("IsOpen", _isOpen);
-
-            if (_isOpen)
-                AudioManager.Play(AudioManager.Cat.doorOpen);
-            else
-                AudioManager.Play(AudioManager.Cat.doorClose);
-        }
-        public void Open()
-        {
-            if (_isOpen) return;
-            _isOpen = true;
-            _animator.SetBool("IsOpen", true);
-        }
-
-        public void Close()
-        {
-            if (!_isOpen) return;
-            _isOpen = false;
-            _animator.SetBool("IsOpen", false);
+            if (animator != null)
+                animator.SetBool("IsOpen", open);
         }
     }
 }

@@ -1,47 +1,50 @@
+using System.Collections.Generic;
 using UnityEngine;
+using Sources.Code.Multiplayer;
 
 namespace Sources.Code.Gameplay.Puzzles.Interactables
 {
-    public class PuzzleItemPlate : MonoBehaviour
+    public sealed class PuzzleItemPlate : MonoBehaviour
     {
-        [Header("Refs")]
-        [SerializeField] private PuzzleController _controller;
+        [SerializeField] private NetworkPuzzle puzzle;
+        [SerializeField] private string requiredTag = "PuzzleItem";
+        [SerializeField] private int requiredCount = 1;
 
-        [Header("Filter")]
-        [SerializeField] private string _requiredTag = "PuzzleItem";
-
-        [Header("Settings")]
-        [SerializeField] private int _requiredCount = 1;
-
-        private int _currentCount;
-        private bool _isCompleted;
+        private readonly HashSet<GameObject> inside = new();
 
         private void OnTriggerEnter(Collider other)
         {
-            if (!other.CompareTag(_requiredTag))
+            if (!other.CompareTag(requiredTag))
                 return;
 
-            _currentCount++;
+            var root = other.attachedRigidbody != null
+                ? other.attachedRigidbody.gameObject
+                : other.gameObject;
 
-            if (!_isCompleted && _currentCount >= _requiredCount)
-            {
-                _isCompleted = true;
-                _controller?.OnPlateCompleted();
-            }
+            if (inside.Contains(root))
+                return;
+
+            inside.Add(root);
+
+            if (inside.Count >= requiredCount)
+                puzzle?.RequestPlateChange(true);
         }
 
         private void OnTriggerExit(Collider other)
         {
-            if (!other.CompareTag(_requiredTag))
+            if (!other.CompareTag(requiredTag))
                 return;
 
-            _currentCount = Mathf.Max(0, _currentCount - 1);
+            var root = other.attachedRigidbody != null
+                ? other.attachedRigidbody.gameObject
+                : other.gameObject;
 
-            if (_isCompleted && _currentCount < _requiredCount)
-            {
-                _isCompleted = false;
-                _controller?.OnPlateUncompleted();
-            }
+            if (!inside.Contains(root))
+                return;
+
+            inside.Remove(root);
+
+            puzzle?.RequestPlateChange(false);
         }
     }
 }

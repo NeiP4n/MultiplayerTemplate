@@ -1,493 +1,176 @@
-using Sources.Code.Utils;
-using UnityEngine;
-using UnityEngine.UI;
 using DG.Tweening;
 using PurrNet;
-using TMPro;
 using TriInspector;
+using UnityEngine;
+using UnityEngine.UI;
 
 namespace Sources.Code.UI
 {
-    [System.Flags]
-    public enum MenuState
+    [DeclareBoxGroup("Main", Title = "Main")]
+    [DeclareBoxGroup("Multiplayer", Title = "Multiplayer")]
+    [DeclareBoxGroup("Fade", Title = "Fade")]
+    [DeclareBoxGroup("Debug", Title = "Debug")]
+    public sealed class MenuScreen : BaseScreen
     {
-        None = 0,
-        Idle = 1 << 0,
-        Connecting = 1 << 1,
-        Connected = 1 << 2,
-        Fading = 1 << 3,
-        Error = 1 << 4
-    }
+        [Group("Main"), Required]
+        [SerializeField] private CanvasGroup mainGroup;
 
-    [DeclareBoxGroup("MainMenu", Title = "Main Menu")]
-    [DeclareBoxGroup("Multiplayer", Title = "Multiplayer Buttons")]
-    [DeclareBoxGroup("Fade", Title = "Fade To Black")]
-    [DeclareBoxGroup("Protection", Title = "Protection Settings")]
-    public class MenuScreen : BaseScreen
-    {
-        [Group("MainMenu")]
-        [Required]
-        [SerializeField] private CanvasGroup _mainGroup;
+        [Group("Multiplayer"), Required]
+        [SerializeField] private Button hostButton;
+
+        [Group("Multiplayer"), Required]
+        [SerializeField] private Button joinButton;
 
         [Group("Multiplayer")]
-        [Required]
-        [SerializeField] private Button _hostButton;
-        
+        [SerializeField] private InputField ipField;
+
         [Group("Multiplayer")]
-        [Required]
-        [SerializeField] private Button _joinButton;
+        [SerializeField] private InputField portField;
 
-        [Group("Fade")]
-        [Required]
-        [SerializeField] private CanvasGroup _fadeGroup;
-        
-        [Group("Fade")]
-        [Range(0.1f, 2f)]
-        [SerializeField] private float _fadeDuration = 0.6f;
-        
-        [Group("Fade")]
-        [Range(0f, 1f)]
-        [SerializeField] private float _blackPause = 0.3f;
+        [Group("Fade"), Required]
+        [SerializeField] private CanvasGroup fadeGroup;
 
-        [Group("Protection")]
-        [Range(5f, 30f)]
-        [SerializeField] private float _maxWaitTime = 10f;
-        
-        [Group("Protection")]
-        [Range(0.1f, 2f)]
-        [SerializeField] private float _minClickDelay = 0.5f;
-        
-        [Group("Protection")]
-        [Range(1, 10)]
-        [SerializeField] private int _maxRetries = 3;
-        
-        [Group("Protection")]
-        [SerializeField] private TextMeshProUGUI _statusText;
+        [Group("Fade"), Range(0.1f, 2f)]
+        [SerializeField] private float fadeDuration = 0.5f;
 
-        [Title("Debug Info")]
-        [ShowInInspector, ReadOnly]
-        private MenuState _state = MenuState.Idle;
-        
-        [ShowInInspector, ReadOnly]
-        private bool _isInitialized;
-        
-        [ShowInInspector, ReadOnly]
-        private int _retryCount;
+        [Group("Debug"), ShowInInspector, ReadOnly]
+        private bool isBusy;
 
-        private IMain _main;
-        private Sequence _sequence;
-        private NetworkManager _networkManager;
-        private float _connectionStartTime;
-        private float _lastClickTime;
+        private IMain main;
+        private NetworkManager network;
+        private Tween fadeTween;
 
-        public void Init(IMain main)
+        public void Init(IMain mainContext)
         {
-            if (_isInitialized)
-            {
-                LoggerDebug.LogUIWarning("[MenuScreen] Already initialized");
-                return;
-            }
+            main = mainContext;
+            network = NetworkManager.main;
 
-            if (main == null)
-            {
-                LoggerDebug.LogUIError("[MenuScreen] Main is null");
-                SetState(MenuState.Error);
-                return;
-            }
+            fadeGroup.alpha = 0f;
+            fadeGroup.blocksRaycasts = false;
+            fadeGroup.interactable = false;
 
-            _main = main;
-            _networkManager = NetworkManager.main;
+            isBusy = false;
 
-            if (_networkManager == null)
-            {
-                LoggerDebug.LogNetworkError("[MenuScreen] NetworkManager not found");
-                DisableButtons();
-                ShowStatus("Критическая ошибка: NetworkManager не найден", Color.red);
-                SetState(MenuState.Error);
-                return;
-            }
+            if (ipField != null && string.IsNullOrWhiteSpace(ipField.text))
+                ipField.text = "127.0.0.1";
 
-            if (_fadeGroup == null)
-            {
-                LoggerDebug.LogUIError("[MenuScreen] FadeGroup is null");
-                SetState(MenuState.Error);
-                return;
-            }
-
-            _fadeGroup.alpha = 0f;
-            _fadeGroup.blocksRaycasts = false;
-            _fadeGroup.interactable = false;
-
-            if (_mainGroup != null)
-            {
-                ShowMain();
-            }
-            else
-            {
-                LoggerDebug.LogUIError("[MenuScreen] MainGroup is null");
-                SetState(MenuState.Error);
-                return;
-            }
-
-            _isInitialized = true;
-            SetState(MenuState.Idle);
-            LoggerDebug.LogUI("[MenuScreen] Initialized successfully");
+            if (portField != null && string.IsNullOrWhiteSpace(portField.text))
+                portField.text = "7777";
         }
 
         private void OnEnable()
         {
-            if (_hostButton != null)
-                _hostButton.onClick.AddListener(OnHostClicked);
-            else
-                LoggerDebug.LogUIWarning("[MenuScreen] HostButton is null");
-            
-            if (_joinButton != null)
-                _joinButton.onClick.AddListener(OnJoinClicked);
-            else
-                LoggerDebug.LogUIWarning("[MenuScreen] JoinButton is null");
+            hostButton.onClick.AddListener(OnHostClicked);
+            joinButton.onClick.AddListener(OnJoinClicked);
         }
 
         private void OnDisable()
         {
-            if (_hostButton != null)
-                _hostButton.onClick.RemoveListener(OnHostClicked);
-            
-            if (_joinButton != null)
-                _joinButton.onClick.RemoveListener(OnJoinClicked);
-            
-            CleanupSequence();
-            SetState(MenuState.Idle);
+            hostButton.onClick.RemoveListener(OnHostClicked);
+            joinButton.onClick.RemoveListener(OnJoinClicked);
+            fadeTween?.Kill();
         }
 
-        private void OnDestroy()
+        private async void OnHostClicked()
         {
-            CleanupSequence();
-        }
+            Debug.Log("HOST CLICKED");
 
-        private void Update()
-        {
-            if (!_isInitialized) return;
-            if (!HasState(MenuState.Connecting)) return;
-
-            if (Time.time - _connectionStartTime > _maxWaitTime)
+            if (network == null)
             {
-                LoggerDebug.LogNetworkError("[MenuScreen] Connection timeout");
-                OnConnectionFailed("Превышено время ожидания");
-            }
-        }
-
-        private void OnHostClicked()
-        {
-            if (!ValidateClick()) return;
-
-            if (_networkManager == null)
-            {
-                ShowStatus("NetworkManager потерян", Color.red);
-                SetState(MenuState.Error);
+                Debug.LogError("NetworkManager is NULL");
                 return;
             }
 
-            if (_networkManager.isServer || _networkManager.isClient)
+            if (!network.isServer && !network.isClient)
             {
-                LoggerDebug.LogNetwork("[MenuScreen] Already connected, starting directly");
-                StartFadeAndLoad();
-                return;
+                Debug.Log("Starting Host...");
+                network.StartHost();
+
+                while (!network.isServer || !network.isClient)
+                    await Cysharp.Threading.Tasks.UniTask.Yield();
             }
 
-            SetState(MenuState.Connecting);
-            _connectionStartTime = Time.time;
-            _retryCount++;
+            Debug.Log($"HOST READY: isServer={network.isServer} isClient={network.isClient}");
 
-            ShowStatus("Запуск хоста...", Color.white);
-            StartCoroutine(StartHostAsync());
+            main.StartGame();
         }
 
-        private System.Collections.IEnumerator StartHostAsync()
+        private async void OnJoinClicked()
         {
-            yield return new WaitForEndOfFrame();
+            if (isBusy || network == null)
+                return;
 
-            bool success = false;
-            System.Exception error = null;
-            
-            try
+            isBusy = true;
+            SetMainGroup(false);
+
+            // Дефолт для дебага: если поля пустые — localhost:7777
+            string ip = "127.0.0.1";
+            ushort port = 7777;
+
+            if (ipField != null && !string.IsNullOrWhiteSpace(ipField.text))
+                ip = ipField.text.Trim();
+
+            if (portField != null && ushort.TryParse(portField.text, out ushort parsedPort))
+                port = parsedPort;
+
+            Debug.Log($"Joining {ip}:{port}");
+
+            if (!network.isClient)
             {
-                _networkManager.StartHost();
-                success = true;
+                // PurrNet часто использует StartClient() без параметров
+                // Если нужно указать IP/порт — используй NetworkManager.main.SetAddress(ip, port); или аналог
+                // Здесь предполагаем, что StartClient() использует дефолтные/преднастроенные значения
+                network.StartClient();
+
+                // Если в твоей версии есть перегрузка StartClient(string ip, ushort port) — раскомментируй:
+                // network.StartClient(ip, port);
             }
-            catch (System.Exception e)
+
+            // Ждём подключения клиента
+            float timeout = 10f;
+            float timer = 0f;
+            while (!network.isClient && timer < timeout)
             {
-                error = e;
+                timer += Time.deltaTime;
+                await Cysharp.Threading.Tasks.UniTask.Yield();
             }
 
-            yield return new WaitForEndOfFrame();
-
-            if (success)
+            if (network.isClient)
             {
-                LoggerDebug.LogNetwork("[MenuScreen] Host started");
-                yield return new WaitForSeconds(0.2f);
-                StartFadeAndLoad();
+                Debug.Log($"CLIENT READY: isServer={network.isServer} isClient={network.isClient}");
+                main.StartGame();
             }
             else
             {
-                LoggerDebug.LogNetworkError($"[MenuScreen] Host exception: {error}");
-                OnConnectionFailed($"Ошибка хоста: {error.Message}");
+                Debug.LogError("Failed to connect. Check if host is running on 127.0.0.1:7777");
+                ResetUI();
             }
         }
 
-        private System.Collections.IEnumerator StartClientAsync()
+        private void StartFade()
         {
-            yield return new WaitForEndOfFrame();
+            fadeGroup.blocksRaycasts = true;
 
-            bool success = false;
-            System.Exception error = null;
-            
-            try
-            {
-                _networkManager.StartClient();
-                success = true;
-            }
-            catch (System.Exception e)
-            {
-                error = e;
-            }
-
-            yield return new WaitForEndOfFrame();
-
-            if (success)
-            {
-                LoggerDebug.LogNetwork("[MenuScreen] Client started");
-                yield return new WaitForSeconds(0.2f);
-                StartFadeAndLoad();
-            }
-            else
-            {
-                LoggerDebug.LogNetworkError($"[MenuScreen] Client exception: {error}");
-                OnConnectionFailed($"Ошибка подключения: {error.Message}");
-            }
-        }
-
-
-        private void OnJoinClicked()
-        {
-            if (!ValidateClick()) return;
-
-            if (_networkManager == null)
-            {
-                ShowStatus("NetworkManager потерян", Color.red);
-                SetState(MenuState.Error);
-                return;
-            }
-
-            if (_networkManager.isServer || _networkManager.isClient)
-            {
-                LoggerDebug.LogNetwork("[MenuScreen] Already connected, starting directly");
-                StartFadeAndLoad();
-                return;
-            }
-
-            SetState(MenuState.Connecting);
-            _connectionStartTime = Time.time;
-            _retryCount++;
-
-            ShowStatus("Подключение...", Color.white);
-            StartCoroutine(StartClientAsync());
-        }
-
-        private bool ValidateClick()
-        {
-            if (!_isInitialized)
-            {
-                LoggerDebug.LogUIWarning("[MenuScreen] Not initialized");
-                return false;
-            }
-
-            if (HasState(MenuState.Connecting | MenuState.Fading))
-            {
-                LoggerDebug.LogUI("[MenuScreen] Busy");
-                return false;
-            }
-
-            if (HasState(MenuState.Error))
-            {
-                LoggerDebug.LogUIWarning("[MenuScreen] In error state");
-                return false;
-            }
-
-            if (Time.time - _lastClickTime < _minClickDelay)
-            {
-                LoggerDebug.LogUI("[MenuScreen] Click too fast");
-                return false;
-            }
-
-            if (_retryCount >= _maxRetries)
-            {
-                LoggerDebug.LogUIError("[MenuScreen] Max retries reached");
-                ShowStatus("Слишком много попыток", Color.red);
-                return false;
-            }
-
-            _lastClickTime = Time.time;
-            return true;
-        }
-
-        [Button("Test Fade Animation")]
-        private void TestFadeAnimation()
-        {
-            if (!Application.isPlaying) return;
-            StartFadeAndLoad();
-        }
-
-        private void StartFadeAndLoad()
-        {
-            if (_fadeGroup == null)
-            {
-                OnConnectionFailed("FadeGroup потерян");
-                return;
-            }
-
-            SetState(MenuState.Fading);
-            DisableAllInput();
-
-            Cursor.lockState = CursorLockMode.Locked;
-            Cursor.visible = false;
-
-            _fadeGroup.blocksRaycasts = true;
-
-            CleanupSequence();
-            
-            _sequence = DOTween.Sequence()
-                .Append(_fadeGroup.DOFade(1f, _fadeDuration).SetEase(Ease.InQuad))
-                .AppendInterval(_blackPause)
-                .OnComplete(OnFadeComplete)
-                .OnKill(() => LoggerDebug.LogUI("[MenuScreen] Sequence killed"));
-
-            _sequence.SetUpdate(true);
-        }
-
-        private void OnFadeComplete()
-        {
-            if (_networkManager == null)
-            {
-                OnConnectionFailed("NetworkManager потерян");
-                return;
-            }
-
-            if (!_networkManager.isServer && !_networkManager.isClient)
-            {
-                OnConnectionFailed("Сеть не готова");
-                return;
-            }
-
-            if (_main == null)
-            {
-                LoggerDebug.LogUIError("[MenuScreen] Main потерян");
-                OnConnectionFailed("Main отсутствует");
-                return;
-            }
-
-            SetState(MenuState.Connected);
-            _main.StartGame();
-        }
-
-        private void OnConnectionFailed(string reason)
-        {
-            LoggerDebug.LogNetworkError($"[MenuScreen] Failed: {reason}");
-            
-            SetState(MenuState.Error);
-            CleanupSequence();
-
-            ShowStatus($"Ошибка: {reason}", Color.red);
-
-            if (_fadeGroup != null)
-            {
-                _fadeGroup.DOFade(0f, 0.3f)
-                    .SetUpdate(true)
-                    .OnComplete(() =>
-                    {
-                        if (_fadeGroup != null)
-                            _fadeGroup.blocksRaycasts = false;
-                    });
-            }
-
-            EnableAllInput();
-
-            Cursor.lockState = CursorLockMode.None;
-            Cursor.visible = true;
-
-            DOVirtual.DelayedCall(1f, () => SetState(MenuState.Idle)).SetUpdate(true);
-        }
-
-        private void ShowStatus(string message, Color color)
-        {
-            if (_statusText != null)
-            {
-                _statusText.text = message;
-                _statusText.color = color;
-                _statusText.gameObject.SetActive(true);
-
-                DOVirtual.DelayedCall(3f, () =>
+            fadeTween = fadeGroup
+                .DOFade(1f, fadeDuration)
+                .SetUpdate(true)
+                .OnComplete(() =>
                 {
-                    if (_statusText != null)
-                        _statusText.gameObject.SetActive(false);
-                }).SetUpdate(true);
-            }
-
-            LoggerDebug.LogUI($"[MenuScreen] {message}");
+                    main.StartGame();
+                });
         }
 
-        private void ShowMain()
+        private void SetMainGroup(bool enabled)
         {
-            if (_mainGroup == null) return;
-            _mainGroup.alpha = 1f;
-            SetGroupState(_mainGroup, true);
+            mainGroup.interactable = enabled;
+            mainGroup.blocksRaycasts = enabled;
+            mainGroup.alpha = enabled ? 1f : 0.5f;
         }
 
-        private void DisableAllInput()
+        private void ResetUI()
         {
-            SetGroupState(_mainGroup, false);
-            if (_hostButton != null) _hostButton.interactable = false;
-            if (_joinButton != null) _joinButton.interactable = false;
-        }
-
-        private void EnableAllInput()
-        {
-            SetGroupState(_mainGroup, true);
-            if (_hostButton != null) _hostButton.interactable = true;
-            if (_joinButton != null) _joinButton.interactable = true;
-        }
-
-        private void DisableButtons()
-        {
-            if (_hostButton != null) _hostButton.interactable = false;
-            if (_joinButton != null) _joinButton.interactable = false;
-        }
-
-        private void CleanupSequence()
-        {
-            if (_sequence != null && _sequence.IsActive())
-            {
-                _sequence.Kill();
-                _sequence = null;
-            }
-        }
-
-        private void SetState(MenuState newState)
-        {
-            if (_state == newState) return;
-            LoggerDebug.LogUI($"[MenuScreen] State: {_state} -> {newState}");
-            _state = newState;
-        }
-
-        private bool HasState(MenuState state)
-        {
-            return (_state & state) != 0;
-        }
-
-        private static void SetGroupState(CanvasGroup group, bool enabled)
-        {
-            if (group == null) return;
-            group.interactable = enabled;
-            group.blocksRaycasts = enabled;
+            isBusy = false;
+            SetMainGroup(true);
         }
     }
 }

@@ -1,68 +1,106 @@
-using System.Threading;
 using DG.Tweening;
 using TMPro;
+using TriInspector;
 using UnityEngine;
 using UnityEngine.UI;
 using Sources.Code.Configs;
 
 namespace Sources.Code.UI
 {
-    public class GameEventPopup : BasePopup
+    [DeclareBoxGroup("Setup", Title = "Setup")]
+    [DeclareBoxGroup("Runtime", Title = "Runtime (Debug)")]
+    public sealed class GameEventPopup : BasePopup
     {
-        private const int EnabledEndValue = 1;
-        
-        [SerializeField] private CanvasGroup _canvasGroup;
-        [SerializeField] private Image _image;
-        [SerializeField] private TMP_Text _text;
-        
-        private CancellationToken _gameToken;
-        private GameEventScreenConfig _eventScreenConfig;
-        
-        private Color _imageColor;
-        private float _duration;
-        
-        private Color _victoryTextColor;
-        private string _victoryText;
-        
-        private Color _defeatTextColor;
-        private string _defeatText;
-        
+        private const float VisibleAlpha = 1f;
+
+        // =============================
+        // Setup
+        // =============================
+
+        [Group("Setup"), Required]
+        [SerializeField] private Image image;
+
+        [Group("Setup"), Required]
+        [SerializeField] private TMP_Text text;
+
+        // =============================
+        // Runtime
+        // =============================
+
+        [Group("Runtime"), ShowInInspector, ReadOnly]
+        private float duration;
+
+        private Color imageColor;
+        private Color victoryTextColor;
+        private string victoryText;
+        private Color defeatTextColor;
+        private string defeatText;
+
+        private Tween fadeTween;
+
+        // =============================
+        // Init
+        // =============================
+
         public override void Init()
         {
-            _eventScreenConfig = GameEventScreenConfig.Instance;
-            
-            _duration = _eventScreenConfig.Duration;
-            _imageColor = _eventScreenConfig.ImageColor;
-            
-            _victoryText = _eventScreenConfig.VictoryText;
-            _victoryTextColor = _eventScreenConfig.VictoryTextColor;
-            
-            _defeatText = _eventScreenConfig.DefeatText;
-            _defeatTextColor = _eventScreenConfig.DefeatTextColor;
+            base.Init();
+
+            var config = GameEventScreenConfig.Instance;
+            if (config == null)
+            {
+                Debug.LogError("[GameEventPopup] Config not found", this);
+                return;
+            }
+
+            duration = config.Duration;
+            imageColor = config.ImageColor;
+
+            victoryText = config.VictoryText;
+            victoryTextColor = config.VictoryTextColor;
+
+            defeatText = config.DefeatText;
+            defeatTextColor = config.DefeatTextColor;
         }
 
-        private Color SetColor(Color color, float fade)
-        {
-            return new Color(color.r, color.g, color.b, fade);
-        }
-        
-        private void SetScreen(float duration, string text, Color imageColor, Color textColor)
-        {
-            _text.text = text;
-            _text.color = SetColor(textColor, _text.color.a);
-            _image.color = imageColor;
-
-            _canvasGroup.DOFade(duration, EnabledEndValue).SetLink(gameObject);
-        }
+        // =============================
+        // API
+        // =============================
 
         public void ShowVictory()
         {
-            SetScreen(_duration, _victoryText, _imageColor, _victoryTextColor);
+            ShowInternal(victoryText, imageColor, victoryTextColor);
         }
-        
+
         public void ShowDefeat()
-        { 
-            SetScreen(_duration, _defeatText, SetColor(_imageColor, _image.color.a), _defeatTextColor);
+        {
+            ShowInternal(defeatText, imageColor, defeatTextColor);
         }
+
+        private void ShowInternal(string message, Color imgColor, Color txtColor)
+        {
+            text.text = message;
+            text.color = txtColor;
+            image.color = imgColor;
+
+            fadeTween?.Kill();
+
+            canvasGroup.alpha = 0f;
+
+            fadeTween = canvasGroup
+                .DOFade(VisibleAlpha, duration)
+                .SetUpdate(true)
+                .SetLink(gameObject)
+                .OnComplete(() =>
+                {
+                    // Автоматическое скрытие
+                    canvasGroup
+                        .DOFade(0f, duration)
+                        .SetDelay(duration)
+                        .SetUpdate(true)
+                        .SetLink(gameObject);
+                });
+        }
+
     }
 }

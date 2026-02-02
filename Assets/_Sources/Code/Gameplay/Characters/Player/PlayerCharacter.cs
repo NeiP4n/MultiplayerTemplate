@@ -71,6 +71,8 @@ namespace Sources.Code.Gameplay.Characters
 
             if (_inventory != null && handSocket != null)
                 _inventory.HandSocket = handSocket;
+            Debug.Log($"[PlayerCharacter][Awake] {name}");
+
         }
 
 
@@ -125,24 +127,23 @@ namespace Sources.Code.Gameplay.Characters
 
             LockCursor();
 
-
             LoggerDebug.LogGameplay($"[PlayerCharacter] Construct COMPLETE");
         }
 
 
         private void Update()
         {
+
             if (!IsLocalPlayer)
                 return;
-
 
             if (_input == null || _input.IsLocked)
                 return;
 
-
             HandleCursorToggle();
             _interact?.UpdateInteract();
         }
+
 
 
         private void LockCursor()

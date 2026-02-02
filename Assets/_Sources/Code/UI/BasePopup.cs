@@ -1,19 +1,47 @@
 using System;
-using Sources.Managers;
+using Sources.Code.Interfaces;
+using TriInspector;
 using UnityEngine;
 
 namespace Sources.Code.UI
 {
+    [DeclareBoxGroup("Settings", Title = "Popup Settings")]
+    [DeclareBoxGroup("Runtime", Title = "Runtime (Debug)")]
     public abstract class BasePopup : MonoBehaviour
     {
         public event Action<BasePopup> Closed;
 
-        [SerializeField] protected CanvasGroup canvasGroup;
-        [SerializeField] protected bool pauseGame = true;
-        [SerializeField] protected bool closeOnEsc = true;
+        // =============================
+        // Settings
+        // =============================
 
+        [Group("Settings"), Required]
+        [SerializeField] protected CanvasGroup canvasGroup;
+
+        [Group("Settings")]
+        [SerializeField] private bool pauseGame = true;
+
+        [Group("Settings")]
+        [SerializeField] private bool closeOnEsc = true;
+
+        // =============================
+        // Runtime
+        // =============================
+
+        [Group("Runtime"), ShowInInspector, ReadOnly]
+        protected bool isOpen;
+
+        protected IInputManager input;
         private float cachedTimeScale;
-        private bool isOpen;
+
+        // =============================
+        // Init
+        // =============================
+
+        public virtual void Construct(IInputManager inputManager)
+        {
+            input = inputManager;
+        }
 
         public virtual void Init()
         {
@@ -23,9 +51,16 @@ namespace Sources.Code.UI
             HideInstant();
         }
 
+        // =============================
+        // Open / Close
+        // =============================
+
+        public virtual bool CanOpen => true;
+
         public virtual void Open()
         {
-            if (isOpen) return;
+            if (isOpen || !CanOpen)
+                return;
 
             isOpen = true;
 
@@ -42,7 +77,8 @@ namespace Sources.Code.UI
 
         public virtual void Close()
         {
-            if (!isOpen) return;
+            if (!isOpen)
+                return;
 
             isOpen = false;
 
@@ -53,15 +89,22 @@ namespace Sources.Code.UI
             Closed?.Invoke(this);
         }
 
+        // =============================
+        // Update
+        // =============================
+
         protected virtual void Update()
         {
             if (!isOpen || !closeOnEsc)
                 return;
 
-            if (InputManager.Instance.ConsumeCancel())
+            if (input != null && input.ConsumeCancel())
                 Close();
         }
 
+        // =============================
+        // Helpers
+        // =============================
 
         protected void HideInstant()
         {

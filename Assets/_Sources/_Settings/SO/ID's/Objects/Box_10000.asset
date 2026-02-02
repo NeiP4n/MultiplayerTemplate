@@ -1,0 +1,20 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 481b18e598cb3da4d9caf4cbb078dd54, type: 3}
+  m_Name: Box_10000
+  m_EditorClassIdentifier: Assembly-CSharp::WorldObjectDefinition
+  id: 10000
+  displayName: Box_10000
+  category: 1
+  weight: 0
+  interactable: 0
+  destructible: 0

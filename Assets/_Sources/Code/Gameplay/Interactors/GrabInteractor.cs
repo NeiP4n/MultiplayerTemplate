@@ -1,136 +1,162 @@
 using Sources.Code.Interfaces;
-using Sources.Code.Utils;
-using TriInspector;
 using UnityEngine;
-
+using PurrNet;
+using TriInspector;
+using Sources.Code.Multiplayer;
 
 namespace Sources.Code.Gameplay.Grab
 {
-    [DeclareHorizontalGroup("DebugButtons")]
-    public class GrabInteractor : MonoBehaviour
+    [DeclareBoxGroup("References")]
+    [DeclareBoxGroup("Grab Settings")]
+    [DeclareBoxGroup("Runtime", Title = "Runtime State")]
+    public class GrabInteractor : NetworkBehaviour
     {
-        [Title("Screen Center Hold")]
-        [Required]
+        [Group("References")]
         [SerializeField] private Transform screenCenterSocket;
 
-
-        [Title("Physics Settings")]
-        [PropertySpace(SpaceBefore = 10)]
-        [Range(1f, 50f)]
-        [Tooltip("Force applied when throwing the object")]
-        [SerializeField] private float throwingForce = 10f;
-
-
-        [Title("Joint Settings")]
-        [PropertySpace(SpaceBefore = 10)]
-        [Range(0f, 50f)]
-        [Tooltip("Linear drag applied to held object")]
+        [Group("Grab Settings")]
         [SerializeField] private float drag = 10f;
-        
-        [Range(0f, 50f)]
-        [Tooltip("Angular drag applied to held object")]
         [SerializeField] private float angularDrag = 5f;
-        
-        [Range(0f, 20f)]
-        [Tooltip("Damper force for spring joint")]
-        [SerializeField] private float damper = 4f;
-        
-        [Range(0f, 500f)]
-        [Tooltip("Spring force for holding object")]
-        [SerializeField] private float spring = 100f;
-        
-        [Range(0.1f, 10f)]
-        [Tooltip("Mass scale multiplier")]
-        [SerializeField] private float massScale = 1f;
-        
-        [Range(0.5f, 10f)]
-        [Tooltip("Maximum distance before object breaks free")]
-        [SerializeField] private float breakingDistance = 3f;
+        [SerializeField] private float damper = 12f;
+        [SerializeField] private float spring = 800f;
+        [SerializeField] private float massScale = 0.8f;
+        [SerializeField] private float breakingDistance = 5f;
 
+        [Group("Runtime"), ReadOnly]
+        private SyncVar<NetworkIdentity> currentIdentity = new SyncVar<NetworkIdentity>(null);
 
-        [Title("Runtime Debug")]
-        [PropertySpace(SpaceBefore = 10)]
-        [ShowInInspector, ReadOnly]
-        [LabelText("Holding Object")]
-        public bool IsHolding => current != null;
-        
-        [ShowInInspector, ReadOnly]
-        [ShowIf(nameof(IsHolding))]
-        [LabelText("Current Object")]
-        private string CurrentObjectName => current != null ? current.name : "None";
-        
-        [ShowInInspector, ReadOnly]
-        [ShowIf(nameof(IsHolding))]
-        [LabelText("Distance to Socket")]
-        private float DistanceToSocket => current != null && screenCenterSocket != null 
-            ? Vector3.Distance(current.transform.position, screenCenterSocket.position) 
-            : 0f;
+        private GrabInteractible Current
+        {
+            get
+            {
+                return currentIdentity.value == null
+                    ? null
+                    : currentIdentity.value.GetComponent<GrabInteractible>();
+            }
+        }
 
+        [Group("Runtime"), ReadOnly]
+        private SyncVar<Vector3> syncAnchor =
+            new SyncVar<Vector3>(Vector3.zero, ownerAuth: true);
+        private Vector3 localPreviewAnchor;
 
-        [ShowInInspector, ReadOnly]
-        [ShowIf(nameof(IsHolding))]
-        [LabelText("Will Break At")]
-        private float BreakThreshold => breakingDistance;
-
-
-        private GrabInteractible current;
         private IInputManager _input;
+        private NetworkIdentity identity;
+        public bool HasItem => Current != null;
 
+        private void Awake()
+        {
+            identity = GetComponent<NetworkIdentity>();
+        }
 
         public void Construct(IInputManager input)
         {
             _input = input;
         }
 
-
         private void Update()
         {
-            if (_input == null || _input.IsLocked)
-                return;
+            if (!identity.isOwner) return;
+            if (_input == null || _input.IsLocked) return;
 
-
-            if (IsHolding && _input.ConsumeDrop())
+            if (screenCenterSocket != null)
             {
-                Drop();
-                return;
+                localPreviewAnchor = screenCenterSocket.position;
+                syncAnchor.value = localPreviewAnchor;
             }
 
-
-            if (!IsHolding)
-                return;
-
-
-            Vector3 anchor = screenCenterSocket.position;
-
-
-            if (!current.Follow(anchor))
+            if (Current != null)
             {
-                LoggerDebug.LogGameplayWarning($"[GrabInteractor] Object '{current.name}' broke free - distance exceeded");
-                Drop();
+                Current.transform.position = localPreviewAnchor;
             }
+
+            if (_input.ConsumeDrop())
+                Drop();
         }
 
+        private void FixedUpdate()
+        {
+            if (!isServer) return;
+
+            if (Current == null) return;
+
+            bool valid = Current.Follow(syncAnchor.value);
+
+            if (!valid)
+                PerformDrop();
+        }
 
         public void Grab(GrabInteractible target)
         {
-            if (IsHolding)
+            if (!identity.isOwner) return;
+            if (target == null) return;
+
+            var targetIdentity = target.GetComponent<NetworkIdentity>();
+            if (targetIdentity == null) return;
+
+            Server_RequestGrab(targetIdentity);
+        }
+
+
+        [ServerRpc(requireOwnership: true)]
+        private void Server_RequestGrab(NetworkIdentity targetIdentity)
+        {
+            if (targetIdentity == null) return;
+
+            var grab = targetIdentity.GetComponent<GrabInteractible>();
+            if (grab == null) return;
+
+            TryServerGrab(grab);
+        }
+
+        private void TryServerGrab(GrabInteractible grab)
+        {
+            if (grab.IsLocked)
             {
-                LoggerDebug.LogGameplayWarning("[GrabInteractor] Already holding an object");
-                return;
+                var settings = ServerSettings.Instance;
+                if (settings == null ||
+                    (!settings.allowStealingFromHands.value && !grab.CanStealFromHands))
+                    return;
+
+                if (!string.IsNullOrEmpty(grab.holderGuid.value))
+                {
+                    var interactors = Object.FindObjectsByType<GrabInteractor>(FindObjectsSortMode.None);
+                    foreach (var inter in interactors)
+                    {
+                        if (inter.identity?.isSpawned == true &&
+                            inter.identity.owner.ToString() == grab.holderGuid.value &&
+                            inter.Current == grab)
+                        {
+                            inter.PerformDrop();
+                            break;
+                        }
+                    }
+                }
             }
 
+            PerformGrab(grab);
+            grab.holderGuid.value = identity.owner.ToString();
+        }
 
-            if (target == null)
-            {
-                LoggerDebug.LogGameplayError("[GrabInteractor] Cannot grab null target");
-                return;
-            }
+        public void Drop()
+        {
+            if (!identity.isOwner) return;
+            if (Current == null) return;
 
+            Server_RequestDrop();
+        }
 
-            current = target;
+        [ServerRpc(requireOwnership: true)]
+        private void Server_RequestDrop()
+        {
+            PerformDrop();
+        }
 
+        private void PerformGrab(GrabInteractible target)
+        {
+            currentIdentity.value = target.GetComponent<NetworkIdentity>();
 
-            current.Lock(new JointCreationSettings
+            target.Lock(new JointCreationSettings
             {
                 drag = drag,
                 angularDrag = angularDrag,
@@ -140,84 +166,21 @@ namespace Sources.Code.Gameplay.Grab
                 breakingDistance = breakingDistance
             });
 
-
-            LoggerDebug.LogGameplay($"[GrabInteractor] Grabbed '{target.name}'");
-        }
-
-
-        public void Drop(bool throwObject = false)
-        {
-            if (!IsHolding)
-                return;
-
-
-            string objectName = current.name;
-            current.Unlock();
-
-
-            if (throwObject)
+            if (screenCenterSocket != null)
             {
-                current.Push(transform.forward * throwingForce);
-                LoggerDebug.LogGameplay($"[GrabInteractor] Threw '{objectName}' with force {throwingForce}");
-            }
-            else
-            {
-                LoggerDebug.LogGameplay($"[GrabInteractor] Dropped '{objectName}'");
-            }
-
-
-            current = null;
-        }
-
-
-        public void Throw() => Drop(true);
-
-
-        [Button("Force Drop")]
-        [Group("DebugButtons")]
-        [ShowIf(nameof(IsHolding))]
-        [PropertyOrder(1000)]
-        private void Editor_ForceDrop()
-        {
-            if (Application.isPlaying)
-                Drop();
-        }
-
-
-        [Button("Force Throw")]
-        [Group("DebugButtons")]
-        [ShowIf(nameof(IsHolding))]
-        [PropertyOrder(1000)]
-        private void Editor_ForceThrow()
-        {
-            if (Application.isPlaying)
-                Throw();
-        }
-
-
-        private void OnValidate()
-        {
-            if (screenCenterSocket == null)
-            {
-                LoggerDebug.LogGameplayWarning("[GrabInteractor] Screen Center Socket is not assigned");
+                localPreviewAnchor = screenCenterSocket.position;
+                syncAnchor.value = localPreviewAnchor;
+                target.Follow(syncAnchor.value);
             }
         }
 
-
-        private void OnDrawGizmosSelected()
+        private void PerformDrop()
         {
-            if (!IsHolding || screenCenterSocket == null || current == null)
-                return;
+            if (Current == null) return;
 
-
-            Gizmos.color = Color.cyan;
-            Gizmos.DrawLine(current.transform.position, screenCenterSocket.position);
-            
-            Gizmos.color = Color.yellow;
-            Gizmos.DrawWireSphere(screenCenterSocket.position, 0.1f);
-            
-            Gizmos.color = Color.red;
-            Gizmos.DrawWireSphere(screenCenterSocket.position, breakingDistance);
+            Current.Unlock();
+            Current.holderGuid.value = "";
+            currentIdentity.value = null;
         }
     }
 }

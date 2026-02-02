@@ -1,17 +1,22 @@
 using UnityEngine;
 using Sources.Code.Interfaces;
+using Sources.Code.Multiplayer;
 
 namespace Sources.Code.Gameplay.Puzzles.Interactables
 {
-    public class PuzzleCodeSubmitButton : MonoBehaviour, IInteractable
+    public sealed class PuzzleCodeSubmitButton : MonoBehaviour, IInteractable
     {
-        [SerializeField] private PuzzleController _controller;
+        [SerializeField] private NetworkPuzzle puzzle;
 
-        public bool CanInteract => _controller != null && !_controller.IsSolved;
+        public bool CanInteract =>
+            puzzle != null && !puzzle.IsSolved;
 
         public void Interact()
         {
-            _controller?.OnCodeSubmit();
+            if (!CanInteract)
+                return;
+
+            puzzle.RequestCodeSubmit();
         }
     }
 }

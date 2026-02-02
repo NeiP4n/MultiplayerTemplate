@@ -1,298 +1,247 @@
-using Sources.Code.Gameplay.Inventory;
-using Sources.Code.Interfaces;
 using UnityEngine;
-using PurrNet;
 using TriInspector;
-using Sources.Code.Utils;
+using Sources.Code.Interfaces;
+using Sources.Code.Gameplay.Inventory;
 
-namespace Sources.Characters 
+namespace Sources.Characters
 {
+    [RequireComponent(typeof(Rigidbody))]
     [DeclareBoxGroup("Movement")]
     [DeclareBoxGroup("Jump")]
+    [DeclareBoxGroup("Ground Check")]
     [DeclareBoxGroup("References")]
-    [DeclareBoxGroup("State", Title = "Runtime State")]
-    public class GroundMover : MonoBehaviour
+    [DeclareBoxGroup("Runtime", Title = "Runtime State")]
+
+    public sealed class GroundMover : MonoBehaviour
     {
-        [Group("Movement"), LabelText("Forward")]
-        [SerializeField, Range(1f, 15f)] private float forwardSpeed = 6f;
-        
-        [Group("Movement"), LabelText("Backward")]
-        [SerializeField, Range(1f, 15f)] private float backwardSpeed = 4f;
-        
-        [Group("Movement"), LabelText("Strafe")]
-        [SerializeField, Range(1f, 15f)] private float strafeSpeed = 5f;
-        
-        [Group("Movement"), LabelText("Sprint")]
-        [SerializeField, Range(1f, 20f)] private float speedRun = 10f;
+        // =======================
+        // MOVEMENT
+        // =======================
 
-        [Group("Jump"), LabelText("Gravity")]
-        [SerializeField, Range(5f, 50f)] private float gravity = 20f;
-        
-        [Group("Jump"), LabelText("Jump Fall Mult")]
-        [SerializeField, Range(1f, 5f)] private float fallMultiplierJump = 2f;
-        
-        [Group("Jump"), LabelText("Fall Mult")]
-        [SerializeField, Range(1f, 3f)] private float fallMultiplierFall = 1.2f;
-        
-        [Group("Jump"), LabelText("Ground Distance")]
-        [SerializeField, Range(0.05f, 0.5f)] private float groundCheckDistance = 0.15f;
-        
-        [Group("Jump"), LabelText("Max Fall Speed")]
-        [SerializeField, Range(10f, 100f)] private float maxFallSpeed = 50f;
-        
-        [Group("Jump"), LabelText("Max Angle")]
-        [SerializeField, Range(30f, 80f)] private float maxGroundAngle = 60f;
+        [Group("Movement"), SerializeField] private float forwardSpeed = 6f;
+        [Group("Movement"), SerializeField] private float backwardSpeed = 4f;
+        [Group("Movement"), SerializeField] private float strafeSpeed = 5f;
+        [Group("Movement"), SerializeField] private float sprintSpeed = 10f;
+        [Group("Movement"), SerializeField, Range(0f,1f)] private float airControl = 0.5f;
 
-        [Group("References")]
-        [SerializeField, Required] private Camera playerCamera;
-        
-        [Group("References")]
-        [SerializeField, Required] private CharacterController player;
+        // =======================
+        // JUMP
+        // =======================
 
-        [Group("Movement")]
-        [SerializeField] private bool active = true;
+        [Group("Jump"), SerializeField] private float jumpForce = 7f;
+        [Group("Jump"), SerializeField] private float gravityMultiplier = 2f;
+        [Group("Jump"), SerializeField] private float coyoteTime = 0.15f;
+        [Group("Jump"), SerializeField] private float jumpBufferTime = 0.15f;
 
-        [Group("State"), ReadOnly, ShowInInspector]
-        private float verticalVelocity = -2f;
+        // =======================
+        // GROUND CHECK
+        // =======================
 
-        [Group("State"), ReadOnly, ShowInInspector]
+        [Group("Ground Check"), SerializeField]
+        private Transform groundCheckPoint;
+
+        [Group("Ground Check"), SerializeField]
+        private float groundRadius = 0.3f;
+
+        [Group("Ground Check"), SerializeField]
+        private LayerMask groundMask;
+
+        // =======================
+        // REFERENCES
+        // =======================
+
+        [Group("References"), Required]
+        [SerializeField] private Camera playerCamera;
+
+        // =======================
+        // RUNTIME STATE
+        // =======================
+
+        [Group("Runtime"), ReadOnly, ShowInInspector]
         public bool IsGrounded { get; private set; }
 
-        [Group("State"), ReadOnly, ShowInInspector]
-        public float CurrentSpeed
-        {
-            get
-            {
-                if (player == null) return 0f;
-                Vector3 v = player.velocity;
-                v.y = 0f;
-                return v.magnitude;
-            }
-        }
+        [Group("Runtime"), ReadOnly, ShowInInspector]
+        public float SpeedMultiplier { get; private set; } = 1f;
 
-        [Group("State"), ReadOnly, ShowInInspector]
-        private float speedMultiplier = 1f;
+        [Group("Runtime"), ReadOnly, ShowInInspector]
+        public bool SprintEnabled { get; private set; } = true;
 
-        [Group("State"), ReadOnly, ShowInInspector]
-        private bool sprintEnabled = true;
+        // =======================
 
-        [Group("State"), ReadOnly, ShowInInspector]
-        private bool movementEnabled = true;
-
-        [Group("State"), ReadOnly, ShowInInspector]
-        private bool jumpEnabled = true;
-
+        private Rigidbody rb;
         private IInputManager _input;
         private InventorySystem _inventory;
-        private NetworkIdentity _networkIdentity;
 
-        public float MaxSpeed => speedRun;
-        public float SpeedMultiplier => speedMultiplier;
-        public bool SprintEnabled => sprintEnabled;
-        public bool MovementEnabled => movementEnabled;
-        public bool JumpEnabled => jumpEnabled;
+        private float coyoteTimer;
+        private float jumpBufferTimer;
 
-        private bool IsLocalPlayer => _networkIdentity == null || _networkIdentity.isOwner;
+        // =======================
 
         private void Awake()
         {
-            _networkIdentity = GetComponentInParent<NetworkIdentity>();
+            rb = GetComponent<Rigidbody>();
         }
 
         public void Construct(IInputManager input, InventorySystem inventory)
         {
-            if (!IsLocalPlayer)
-            {
-                enabled = false;
-                return;
-            }
-
             _input = input;
             _inventory = inventory;
         }
 
-        void Update()
+        private void Update()
         {
-            if (!IsLocalPlayer)
-            {
-                LoggerDebug.LogGameplayWarning("Not local player - skipping");
-                return;
-            }
-
             if (_input == null)
-            {
-                LoggerDebug.LogGameplayError("Input is NULL!");
                 return;
-            }
 
-            LoggerDebug.LogGameplay($"Input H:{_input.Horizontal} V:{_input.Vertical} Locked:{_input.IsLocked}");
-
-            if (active)
-                ApplyGravity(); 
-
-            if (_input.IsLocked || !active)
-            {
-                LoggerDebug.LogGameplay("Input LOCKED or not active");
-                return;
-            }
-
-            DoMove();
+            CheckGround();
+            HandleJumpBuffer();
         }
 
-        public void DoMove()
-        {            
-            if (!movementEnabled) return;
-            
-            Vector2 input = new Vector2(_input.Horizontal, _input.Vertical);
-            bool running = _input.SprintPressed && sprintEnabled;
-
-            MovePlayer(running, input);
-        }
-
-        private void MovePlayer(bool isRunning, Vector2 input)
+        private void FixedUpdate()
         {
-            if (player == null || playerCamera == null)
-            {
-                LoggerDebug.LogGameplayError($"Missing - Player:{player != null}, Camera:{playerCamera != null}");
+            if (_input == null)
                 return;
-            }
 
-            LoggerDebug.LogGameplay($"Input: {input}, Running: {isRunning}");
+            ApplyExtraGravity();
+            HandleMovement();
+        }
+
+        // =======================
+        // GROUND
+        // =======================
+
+        private void CheckGround()
+        {
+            IsGrounded = Physics.CheckSphere(
+                groundCheckPoint.position,
+                groundRadius,
+                groundMask,
+                QueryTriggerInteraction.Ignore);
+
+            if (IsGrounded)
+                coyoteTimer = coyoteTime;
+            else
+                coyoteTimer -= Time.deltaTime;
+        }
+
+        // =======================
+        // JUMP
+        // =======================
+
+        private void HandleJumpBuffer()
+        {
+            if (_input.ConsumeJump())
+                jumpBufferTimer = jumpBufferTime;
+
+            if (jumpBufferTimer > 0)
+                jumpBufferTimer -= Time.deltaTime;
+
+            if (jumpBufferTimer > 0 && coyoteTimer > 0)
+            {
+                Vector3 velocity = rb.linearVelocity;
+                velocity.y = 0;
+                rb.linearVelocity = velocity;
+
+                rb.AddForce(Vector3.up * jumpForce, ForceMode.Impulse);
+
+                jumpBufferTimer = 0;
+                coyoteTimer = 0;
+            }
+        }
+
+        // =======================
+        // MOVEMENT
+        // =======================
+
+        private void HandleMovement()
+        {
+            Vector2 input =
+                new Vector2(_input.Horizontal, _input.Vertical);
 
             Vector3 forward = playerCamera.transform.forward;
             Vector3 right = playerCamera.transform.right;
+
             forward.y = 0;
             right.y = 0;
+
             forward.Normalize();
             right.Normalize();
 
-            float speedY = 0f;
-            if (input.y > 0)
-                speedY = isRunning ? speedRun : forwardSpeed;
-            else if (input.y < 0)
-                speedY = isRunning ? speedRun : backwardSpeed;
+            bool running =
+                _input.SprintPressed && SprintEnabled;
 
-            float speedX = input.x != 0 ? (isRunning ? speedRun : strafeSpeed) : 0f;
+            float speedZ = input.y > 0
+                ? (running ? sprintSpeed : forwardSpeed)
+                : (input.y < 0 ? backwardSpeed : 0f);
 
-            Vector3 moveDirection = forward * input.y * speedY + right * input.x * speedX;
+            float speedX = input.x != 0
+                ? (running ? sprintSpeed : strafeSpeed)
+                : 0f;
 
-            LoggerDebug.LogGameplay($"MoveDirection: {moveDirection}");
+            Vector3 move =
+                forward * input.y * speedZ +
+                right * input.x * speedX;
 
             float weightMultiplier = 1f;
+
             if (_inventory != null)
-                weightMultiplier = Mathf.Clamp(1f - (_inventory.TotalWeight / 20f), 0.3f, 1f);
-
-            moveDirection *= speedMultiplier * weightMultiplier;
-
-            player.Move(moveDirection * Time.deltaTime);
-        }
-
-        public void ApplyGravity()
-        {
-            if (!active) return;
-            if (player == null) return;
-            if (!player.enabled) return;
-
-            IsGrounded = CheckGrounded();
-
-            if (IsGrounded)
             {
-                if (verticalVelocity < 0f) 
-                    verticalVelocity = -2f;
-            }
-            else
-            {
-                if (verticalVelocity > 0f)
-                    verticalVelocity -= gravity * fallMultiplierJump * Time.deltaTime;
-                else
-                    verticalVelocity -= gravity * fallMultiplierFall * Time.deltaTime;
+                weightMultiplier =
+                    Mathf.Clamp(
+                        1f - (_inventory.TotalWeight / 20f),
+                        0.3f,
+                        1f);
             }
 
-            verticalVelocity = Mathf.Clamp(verticalVelocity, -maxFallSpeed, maxFallSpeed);
+            float airMultiplier =
+                IsGrounded ? 1f : airControl;
 
-            Vector3 move = Vector3.up * verticalVelocity * Time.deltaTime;
-            player.Move(move);
+            Vector3 targetVelocity =
+                move * SpeedMultiplier *
+                weightMultiplier *
+                airMultiplier;
+
+            Vector3 velocity = rb.linearVelocity;
+            velocity.x = targetVelocity.x;
+            velocity.z = targetVelocity.z;
+
+            rb.linearVelocity = velocity;
         }
 
-        public bool CheckGrounded()
+        private void ApplyExtraGravity()
         {
-            if (player == null) return false;
-
-            Vector3 origin = player.transform.position + Vector3.up * 0.05f;
-            float radius = player.radius * 0.9f;
-            Vector3[] offsets = 
-            { 
-                Vector3.zero, 
-                Vector3.forward * radius, 
-                Vector3.back * radius, 
-                Vector3.left * radius, 
-                Vector3.right * radius 
-            };
-
-            foreach (var offset in offsets)
+            if (!IsGrounded)
             {
-                Vector3 rayOrigin = origin + offset;
-                if (Physics.Raycast(rayOrigin, Vector3.down, out RaycastHit hit, groundCheckDistance, ~0, QueryTriggerInteraction.Ignore))
-                {
-                    if (Vector3.Angle(hit.normal, Vector3.up) <= maxGroundAngle)
-                        return true;
-                }
+                rb.AddForce(
+                    Physics.gravity * (gravityMultiplier - 1f),
+                    ForceMode.Acceleration);
             }
-
-            return false;
         }
 
-        [Button("Reset Movement Settings"), Group("Movement")]
-        private void ResetMovementSettings()
-        {
-            forwardSpeed = 6f;
-            backwardSpeed = 4f;
-            strafeSpeed = 5f;
-            speedRun = 10f;
-        }
-
-        [Button("Reset Jump Settings"), Group("Jump")]
-        private void ResetJumpSettings()
-        {
-            gravity = 20f;
-            fallMultiplierJump = 2f;
-            fallMultiplierFall = 1.2f;
-            groundCheckDistance = 0.15f;
-            maxFallSpeed = 50f;
-            maxGroundAngle = 60f;
-        }
+        // =======================
+        // PUBLIC API (TriggerZone совместимость)
+        // =======================
 
         public void SetSpeedMultiplier(float value)
         {
-            speedMultiplier = Mathf.Clamp(value, 0.1f, 5f);
+            SpeedMultiplier = Mathf.Clamp(value, 0.1f, 5f);
         }
 
         public void SetSprintEnabled(bool value)
         {
-            sprintEnabled = value;
-        }
-
-        public void SetJumpEnabled(bool value)
-        {
-            jumpEnabled = value;
-        }
-
-        public void SetMovementEnabled(bool value)
-        {
-            movementEnabled = value;
+            SprintEnabled = value;
         }
 
 #if UNITY_EDITOR
         private void OnDrawGizmosSelected()
         {
-            if (player == null) return;
-
-            Vector3 origin = player.transform.position + Vector3.up * 0.05f;
-            float radius = player.radius * 0.9f;
+            if (groundCheckPoint == null)
+                return;
 
             Gizmos.color = IsGrounded ? Color.green : Color.red;
-            Gizmos.DrawWireSphere(origin, radius);
-            Gizmos.DrawRay(origin, Vector3.down * groundCheckDistance);
+            Gizmos.DrawWireSphere(
+                groundCheckPoint.position,
+                groundRadius);
         }
 #endif
     }

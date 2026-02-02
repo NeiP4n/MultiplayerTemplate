@@ -12,5 +12,5 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 4e1567cd065728f439bd339af9467a0d, type: 3}
   m_Name: GameFlowConfig
   m_EditorClassIdentifier: Assembly-CSharp::Sources.Code.Configs.GameFlowConfig
-  EnableLoadingScreen: 0
+  EnableLoadingScreen: 1
   EnableCutscene: 0

@@ -18,6 +18,7 @@ MonoBehaviour:
     - ca8c2658484e3fb4194c8b6c82724b5c
     - 01cf0a61ae2951347a2c0561d019a955
     - b33c6e0b81cba6548a95683db77740e2
+    - 25d3931e9504d2f49b052f6b1359e1ca
     values:
     - goDatas_byGlobalId:
         keys:
@@ -101,5 +102,8 @@ MonoBehaviour:
           iconNameOrGuid: StandaloneInputModule Icon
           isIconRecursive: 1
           isColorRecursive: 0
+    - goDatas_byGlobalId:
+        keys: []
+        values: []
   bookmarks: []
   bookmarkedScenePaths: []
